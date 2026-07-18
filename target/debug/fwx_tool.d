@@ -1,1 +1,0 @@
-/home/niklase/Development/fwx_tool/target/debug/fwx_tool: /home/niklase/Development/fwx_tool/src/main.rs /home/niklase/Development/fwx_tool/src/type_identify.rs /home/niklase/Development/fwx_tool/src/verify.rs
