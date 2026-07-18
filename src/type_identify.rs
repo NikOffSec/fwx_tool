@@ -1,127 +1,12 @@
-use std::fmt;
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
-pub enum FileType {
-    // Boot / firmware images
-    UBootUImage,
-    DeviceTreeBlob,
-    AndroidBoot,
-    BroadcomTrx,
-    // Record formats
-    IntelHex,
-    SRecord,
-    // Compression
-    Gzip,
-    Zlib,
-    Bzip2,
-    Xz,
-    Lzma,
-    Lz4,
-    Lzop,
-    Zstd,
-    // Filesystems
-    SquashFs,
-    CramFs,
-    Jffs2,
-    UbiEc,
-    Ubifs,
-    RomFs,
-    Ext,
-    Iso9660,
-    // Archives
-    Tar,
-    Zip,
-    SevenZ,
-    Cpio,
-    Ar,
-    // Executables
-    Elf,
-    PeCoff,
-    MachO,
-    MachOUniversal,
-    // Certificates / keys
-    DerAsn1,
-    Pem,
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
-pub enum Category {
-    Firmware,
-    Record,
-    Compression,
-    Filesystem,
-    Archive,
-    Executable,
-    Crypto,
-}
-
-impl FileType {
-    pub fn category(self) -> Category {
-        use FileType::*;
-        match self {
-            UBootUImage | DeviceTreeBlob | AndroidBoot | BroadcomTrx => Category::Firmware,
-            IntelHex | SRecord => Category::Record,
-            Gzip | Zlib | Bzip2 | Xz | Lzma | Lz4 | Lzop | Zstd => Category::Compression,
-            SquashFs | CramFs | Jffs2 | UbiEc | Ubifs | RomFs | Ext | Iso9660 => {
-                Category::Filesystem
-            }
-            Tar | Zip | SevenZ | Cpio | Ar => Category::Archive,
-            Elf | PeCoff | MachO | MachOUniversal => Category::Executable,
-            DerAsn1 | Pem => Category::Crypto,
-        }
-    }
-}
-
-impl fmt::Display for FileType {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        use FileType::*;
-        let name = match self {
-            UBootUImage => "U-Boot uImage",
-            DeviceTreeBlob => "Flattened Device Tree Blob (FDTB)",
-            AndroidBoot => "Android boot image",
-            BroadcomTrx => "Broadcom TRX",
-            IntelHex => "Intel HEX",
-            SRecord => "Motorola S-Record",
-            Gzip => "gzip",
-            Zlib => "zlib",
-            Bzip2 => "bzip2",
-            Xz => "xz",
-            Lzma => "LZMA",
-            Lz4 => "LZ4",
-            Lzop => "LZOP",
-            Zstd => "Zstandard",
-            SquashFs => "SquashFS",
-            CramFs => "CRAMFS",
-            Jffs2 => "JFFS2",
-            UbiEc => "UBI EC header",
-            Ubifs => "UBIFS",
-            RomFs => "ROMFS",
-            Ext => "ext2/3/4",
-            Iso9660 => "ISO 9660",
-            Tar => "tar",
-            Zip => "zip",
-            SevenZ => "7z",
-            Cpio => "cpio",
-            Ar => "AR archive",
-            Elf => "ELF",
-            PeCoff => "PE/COFF",
-            MachO => "Mach-O",
-            MachOUniversal => "Mach-O Universal Binary",
-            DerAsn1 => "DER/ASN.1",
-            Pem => "PEM",
-        };
-        f.write_str(name)
-    }
-}
-
 pub struct Magic {
     pub filetype: FileType,
-    pub patterns: &'static [(usize, &'static [u8])], // [offset, magic_bytes]
+    // [offset, bytes]
+    pub patterns: &'static [(usize, &'static [u8])],
     pub validate: Option<fn(data: &[u8], off: usize) -> bool>,
 }
 
-pub static MAGIC_NUMBERS: &[Magic] = &[
-    // Boot / Firmware Images
+pub const MAGIC_NUMBERS: &[Magic] = &[
+    // Boot images
     Magic {
         filetype: FileType::UBootUImage,
         patterns: &[(0, &[0x27, 0x05, 0x19, 0x56])],
@@ -143,7 +28,7 @@ pub static MAGIC_NUMBERS: &[Magic] = &[
         patterns: &[(0, b"HDR0")],
         validate: None,
     },
-    // Formats
+    // Record Formats
     Magic {
         filetype: FileType::IntelHex,
         patterns: &[(0, &[0x3a])],
@@ -200,7 +85,7 @@ pub static MAGIC_NUMBERS: &[Magic] = &[
         patterns: &[(0, &[0x28, 0xb5, 0x2f, 0xfd])],
         validate: None,
     },
-    // Filesystems
+    //  Filesystems
     Magic {
         filetype: FileType::SquashFs,
         patterns: &[
@@ -217,29 +102,6 @@ pub static MAGIC_NUMBERS: &[Magic] = &[
             (0, &[0x45, 0x3d, 0xcd, 0x28]), // little-endian
             (0, &[0x28, 0xcd, 0x3d, 0x45]), // big-endian
         ],
-        validate: None,
-    },
-    Magic {
-        filetype: FileType::Jffs2,
-        patterns: &[
-            (0, &[0x85, 0x19]), // little-endian
-            (0, &[0x19, 0x85]), // big-endian
-        ],
-        validate: None,
-    },
-    Magic {
-        filetype: FileType::UbiEc,
-        patterns: &[(0, &[0x55, 0x42, 0x49, 0x23])],
-        validate: None,
-    },
-    Magic {
-        filetype: FileType::Ubifs,
-        patterns: &[(0, &[0x31, 0x18, 0x10, 0x06])],
-        validate: None,
-    },
-    Magic {
-        filetype: FileType::RomFs,
-        patterns: &[(0, b"-rom1fs-")],
         validate: None,
     },
     Magic {
@@ -332,7 +194,6 @@ pub static MAGIC_NUMBERS: &[Magic] = &[
     },
 ];
 
-#[derive(Debug, Clone, Copy)]
 pub struct Finding {
     pub filetype: FileType,
     pub offset: usize, // Offset in file, not filetype specific
@@ -352,4 +213,182 @@ pub fn identify(data: &[u8], offset: usize) -> Option<FileType> {
         }
     }
     None
+}
+
+use std::fmt;
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum FileType {
+    // Boot / firmware images
+    UBootUImage,
+    DeviceTreeBlob,
+    AndroidBoot,
+    BroadcomTrx,
+    // Record formats
+    IntelHex,
+    SRecord,
+    // Compression
+    Gzip,
+    Zlib,
+    Bzip2,
+    Xz,
+    Lzma,
+    Lz4,
+    Lzop,
+    Zstd,
+    // Filesystems
+    SquashFs,
+    CramFs,
+    Jffs2,
+    UbiEc,
+    Ubifs,
+    RomFs,
+    Ext,
+    Iso9660,
+    // Archives
+    Tar,
+    Zip,
+    SevenZ,
+    Cpio,
+    Ar,
+    // Executables
+    Elf,
+    PeCoff,
+    MachO,
+    MachOUniversal,
+    // Certificates / keys
+    DerAsn1,
+    Pem,
+}
+
+pub enum Category {
+    Firmware,
+    Record,
+    Compression,
+    Filesystem,
+    Archive,
+    Executable,
+    Crypto,
+}
+
+impl FileType {
+    pub fn category(self) -> Category {
+        use FileType::*;
+        match self {
+            UBootUImage | DeviceTreeBlob | AndroidBoot | BroadcomTrx => Category::Firmware,
+            IntelHex | SRecord => Category::Record,
+            Gzip | Zlib | Bzip2 | Xz | Lzma | Lz4 | Lzop | Zstd => Category::Compression,
+            SquashFs | CramFs | Jffs2 | UbiEc | Ubifs | RomFs | Ext | Iso9660 => {
+                Category::Filesystem
+            }
+            Tar | Zip | SevenZ | Cpio | Ar => Category::Archive,
+            Elf | PeCoff | MachO | MachOUniversal => Category::Executable,
+            DerAsn1 | Pem => Category::Crypto,
+        }
+    }
+}
+
+impl FileType {
+    pub fn is_weak_signature(&self) -> bool {
+        use FileType::*;
+        matches!(
+            self,
+            DerAsn1
+                | IntelHex
+                | SRecord
+                | Zlib
+                | Lzma
+                | Jffs2
+                | Gzip
+                | Tar
+                | Ext
+                | PeCoff
+                | Zip
+                | Cpio
+                | Lz4
+                | Zstd
+                | SquashFs
+                | CramFs
+                | BroadcomTrx
+                | UBootUImage
+                | DeviceTreeBlob
+                | MachO
+        )
+    }
+}
+
+impl fmt::Display for FileType {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        use FileType::*;
+        let name = match self {
+            UBootUImage => "U-Boot uImage",
+            DeviceTreeBlob => "Flattened Device Tree Blob (FDTB)",
+            AndroidBoot => "Android boot image",
+            BroadcomTrx => "Broadcom TRX",
+            IntelHex => "Intel HEX",
+            SRecord => "Motorola S-Record",
+            Gzip => "gzip",
+            Zlib => "zlib",
+            Bzip2 => "bzip2",
+            Xz => "xz",
+            Lzma => "LZMA",
+            Lz4 => "LZ4",
+            Lzop => "LZOP",
+            Zstd => "Zstandard",
+            SquashFs => "SquashFS",
+            CramFs => "CRAMFS",
+            Jffs2 => "JFFS2",
+            UbiEc => "UBI EC header",
+            Ubifs => "UBIFS",
+            RomFs => "ROMFS",
+            Ext => "ext2/3/4",
+            Iso9660 => "ISO 9660",
+            Tar => "tar",
+            Zip => "zip",
+            SevenZ => "7z",
+            Cpio => "cpio",
+            Ar => "AR archive",
+            Elf => "ELF",
+            PeCoff => "PE/COFF",
+            MachO => "Mach-O",
+            MachOUniversal => "Mach-O Universal Binary",
+            DerAsn1 => "DER/ASN.1",
+            Pem => "PEM",
+        };
+        write!(f, "{name}")
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn identifies_gzip_at_offset() {
+        let mut blob = vec![0u8; 64];
+        blob.extend_from_slice(&[0x1f, 0x8b, 0x08, 0x00]);
+        assert_eq!(identify(&blob, 64), Some(FileType::Gzip));
+    }
+
+    #[test]
+    fn ext_magic_is_offset_relative() {
+        let mut blob = vec![0u8; 0x500];
+        blob[0x438] = 0x53;
+        blob[0x439] = 0xef;
+        assert_eq!(identify(&blob, 0), Some(FileType::Ext));
+    }
+
+    #[test]
+    fn display_matches_old_strings() {
+        assert_eq!(FileType::SquashFs.to_string(), "SquashFS");
+        assert_eq!(
+            FileType::DeviceTreeBlob.to_string(),
+            "Flattened Device Tree Blob (FDTB)"
+        );
+    }
+
+    #[test]
+    fn unsupported_extraction_is_an_error() {
+        let err = FileType::Pem.extract(&[], 0).unwrap_err();
+        assert!(matches!(err, ExtractError::Unsupported(FileType::Pem)));
+    }
 }

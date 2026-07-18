@@ -1,4 +1,5 @@
 mod type_identify;
+mod verify;
 
 use crate::type_identify::{Finding, identify};
 use anyhow::{Context, Result, bail};
@@ -13,8 +14,6 @@ fn main() -> Result<()> {
     let firmware = fs::read(filepath).with_context(|| format!("reading {filepath}"))?;
 
     let identified = scan_image(&firmware);
-
-    println!("{:?}", identified);
 
     Ok(())
 }
