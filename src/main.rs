@@ -22,6 +22,9 @@ fn scan_image(image: &[u8]) -> Vec<Finding> {
     let mut detections: Vec<Finding> = Vec::new();
     for (offset, _byte) in image.iter().enumerate() {
         if let Some(filetype) = identify(image, offset) {
+            if !filetype.verify_file(&image[offset..]) {
+                continue;
+            }
             detections.push(Finding { filetype, offset });
         }
     }

@@ -86,12 +86,11 @@ pub fn zlib(data: &[u8]) -> bool {
     cmf & 0x0F == 8 && cmf >> 4 <= 7 && (u16::from(cmf) * 256 + u16::from(flg)) == 0
 }
 
-/// Legacy `.lzma` (LZMA_alone). There is no real magic at all — the header
-/// is: props byte, u32 LE dictionary size, u64 LE uncompressed size.
-/// - props = lc + lp*9 + pb*45 with lc<=8, lp<=4, pb<=4, so props < 225.
-///   (The common default 0x5D encodes lc=3, lp=0, pb=2.)
-/// - Dictionary sizes in real files are 4 KiB … 512 MiB.
-/// - Uncompressed size is either the sentinel `u64::MAX` ("unknown,
+/// header: props byte, u32 LE dictionary size, u64 LE uncompressed size.
+/// props = lc + lp*9 + pb*45 with lc<=8, lp<=4, pb<=4, so props < 225.
+/// (The common default 0x5D encodes lc=3, lp=0, pb=2.)
+/// Dictionary sizes in real files are 4 KiB … 512 MiB.
+/// Uncompressed size is either the sentinel `u64::MAX` ("unknown,
 ///   streamed") or something plausibly small (< 16 GiB here).
 pub fn lzma(data: &[u8]) -> bool {
     let (Some(&props), Some(dict), Some(usize_field)) =
@@ -104,12 +103,9 @@ pub fn lzma(data: &[u8]) -> bool {
         && (usize_field == u64::MAX || usize_field < 1 << 34)
 }
 
-/// LZ4 frame format. After the 4-byte magic, the frame descriptor has
-/// hard spec requirements:
-/// - FLG bits 7–6 (version) must be `01`; bit 1 is reserved-zero.
-/// - BD bit 7 and bits 3–0 are reserved-zero; bits 6–4 (block max size)
-///   may only be 4..=7 (64 KB … 4 MB).
-/// That's 10 fully-constrained bits beyond the magic.
+/// FLG bits 7–6 (version) must be `01`; bit 1 is reserved-zero.
+/// BD bit 7 and bits 3–0 are reserved-zero;
+/// bits 6–4 (block max size) may only be 4..=7 (64 KB … 4 MB).
 pub fn lz4(data: &[u8]) -> bool {
     let (Some(&flg), Some(&bd)) = (data.get(4), data.get(5)) else {
         return false;
@@ -122,11 +118,9 @@ pub fn lz4(data: &[u8]) -> bool {
         && (4..=7).contains(&(bd >> 4 & 0b111))
 }
 
-/// Zstandard frame. Beyond the 4-byte magic:
-/// - Frame_Header_Descriptor bit 3 is reserved and must be 0.
-/// - If Single_Segment isn't set, a Window_Descriptor follows whose
-///   implied window log (10 + exponent) must be within the format's
-///   maximum of 41.
+/// Frame_Header_Descriptor bit 3 is reserved and must be 0.
+/// If Single_Segment isn't set, a Window_Descriptor follows whose
+/// implied window log (10 + exponent) must be within the format's maximum of 41.
 pub fn zstd(data: &[u8]) -> bool {
     let Some(&fhd) = data.get(4) else {
         return false;
@@ -134,27 +128,23 @@ pub fn zstd(data: &[u8]) -> bool {
     if data[..4] != [0x28, 0xB5, 0x2F, 0xFD] || fhd & 0b0000_1000 != 0 {
         return false;
     }
-    let single_segment = fhd & 0b0010_0000 != 0;
-    if single_segment {
+    if fhd & 0b0010_0000 != 0 {
         return true;
     }
     let Some(&wd) = data.get(5) else { return false };
     10 + u32::from(wd >> 3) <= 41
 }
 
-// ---------------------------------------------------------------------------
-// Verifiers — archives & text-encoded records
-// ---------------------------------------------------------------------------
-
-/// tar. There is no magic at offset 0 at all; POSIX tars have "ustar" at
-/// 257 and pre-POSIX tars have nothing. What *every* tar header has is a
-/// checksum field at bytes 148..156: the unsigned sum of all 512 header
-/// bytes with the checksum field itself counted as ASCII spaces, stored as
-/// octal text. Recomputing it is definitive.
+/// POSIX tars have "ustar" at 257 and pre-POSIX tars have nothing
+/// tar header has a checksum field at bytes 148..156: the unsigned sum of all 512 header
+/// bytes with the checksum field itself counted as ASCII spaces, stored as octal text
 pub fn tar(data: &[u8]) -> bool {
     let Some(hdr) = data.get(..512) else {
         return false;
     };
+    if &hdr[257..262] != b"ustar" {
+        return false;
+    }
     let Some(stored) = parse_octal(&hdr[148..156]) else {
         return false;
     };
@@ -172,7 +162,7 @@ pub fn tar(data: &[u8]) -> bool {
     sum == stored
 }
 
-/// Parse a tar-style octal ASCII field (may be space/NUL padded).
+/// Helper for tar octal checksum
 fn parse_octal(field: &[u8]) -> Option<u32> {
     let mut val: u32 = 0;
     let mut seen = false;
@@ -193,12 +183,9 @@ fn parse_octal(field: &[u8]) -> Option<u32> {
     seen.then_some(val)
 }
 
-/// Intel HEX. The "magic" is a single `:` — hopeless alone. But a record is
-/// `:llaaaatt(dd...)cc` in ASCII hex, and the checksum byte `cc` is chosen
-/// so that all decoded bytes (count, address, type, data, checksum) sum to
-/// 0 mod 256. We fully decode and verify the first record, and require the
-/// record type to be one of the six defined (00–05). A colon in random text
-/// essentially never survives this.
+/// Magic is a single ":" but a record is `:llaaaatt(dd...)cc` in ASCII hex,
+/// and the checksum byte `cc` is chosen so that all decoded bytes
+/// (count, address, type, data, checksum) sum to 0 mod 256
 pub fn intel_hex(data: &[u8]) -> bool {
     fn inner(data: &[u8]) -> Option<bool> {
         if *data.first()? != b':' {
@@ -221,11 +208,10 @@ pub fn intel_hex(data: &[u8]) -> bool {
     inner(data) == Some(true)
 }
 
-/// Motorola S-Record. Magic is just ASCII `S` + a digit. Structure:
+/// Magic is just ASCII `S` + a digit. Structure:
 /// `Stccaaaa...kk` where `cc` is a byte count covering address+data+checksum
 /// and `kk` is the one's complement of the sum of count/address/data — so
-/// count byte + all counted bytes must sum to 0xFF mod 256. We decode and
-/// verify the first record; `S4` is undefined and rejected.
+/// count byte + all counted bytes must sum to 0xFF mod 256. 'S4' is undefined
 pub fn srecord(data: &[u8]) -> bool {
     fn inner(data: &[u8]) -> Option<bool> {
         if *data.first()? != b'S' {
@@ -605,9 +591,7 @@ pub fn der(data: &[u8]) -> bool {
     hdr_len + len <= data.len()
 }
 
-// ---------------------------------------------------------------------------
 // Tests
-// ---------------------------------------------------------------------------
 
 #[cfg(test)]
 mod tests {

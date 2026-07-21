@@ -1,3 +1,5 @@
+use crate::verify;
+
 pub struct Magic {
     pub filetype: FileType,
     // [offset, bytes]
@@ -285,34 +287,41 @@ impl FileType {
             DerAsn1 | Pem => Category::Crypto,
         }
     }
-}
 
-impl FileType {
-    pub fn is_weak_signature(&self) -> bool {
+    pub fn verify_file(&self, data: &[u8]) -> bool {
         use FileType::*;
-        matches!(
-            self,
-            DerAsn1
-                | IntelHex
-                | SRecord
-                | Zlib
-                | Lzma
-                | Jffs2
-                | Gzip
-                | Tar
-                | Ext
-                | PeCoff
-                | Zip
-                | Cpio
-                | Lz4
-                | Zstd
-                | SquashFs
-                | CramFs
-                | BroadcomTrx
-                | UBootUImage
-                | DeviceTreeBlob
-                | MachO
-        )
+        match self {
+            // Compression
+            Gzip => verify::gzip(data),
+            Zlib => verify::zlib(data),
+            Lzma => verify::lzma(data),
+            Lz4 => verify::lz4(data),
+            Zstd => verify::zstd(data),
+            // Record formats
+            IntelHex => verify::intel_hex(data),
+            SRecord => verify::srecord(data),
+            // Archives
+            Tar => verify::tar(data),
+            Zip => verify::zip(data),
+            Cpio => verify::cpio(data),
+            // Filesystems
+            SquashFs => verify::squashfs(data),
+            CramFs => verify::cramfs(data),
+            Jffs2 => verify::jffs2(data),
+            Ext => verify::ext(data),
+            // Firmware containers
+            UBootUImage => verify::uimage(data),
+            BroadcomTrx => verify::trx(data),
+            DeviceTreeBlob => verify::dtb(data),
+            // Executables
+            PeCoff => verify::pe(data),
+            MachO | MachOUniversal => verify::macho(data),
+            // Certificates / keys
+            DerAsn1 => verify::der(data),
+            // Stronger signatures
+            AndroidBoot | Bzip2 | Xz | Lzop | UbiEc | Ubifs | RomFs | Iso9660 | SevenZ | Ar
+            | Elf | Pem => true,
+        }
     }
 }
 
