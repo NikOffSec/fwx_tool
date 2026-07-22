@@ -1,5 +1,44 @@
 use rust_strings::{BytesConfig, strings};
 
+/// Substrings worth surfacing first when triaging a firmware image. Matched
+/// case-insensitively against every extracted string. Grouped only for
+/// readability — order here doesn't matter, a hit on any entry flags a string.
+pub const IMPORTANT_KEYWORDS: &[&str] = &[
+    // versioning / build info
+    "version", "release", "revision", "firmware", "kernel", "linux",
+    "u-boot", "uboot", "busybox", "openwrt", "gcc", "compiled", "build",
+    // credentials / auth
+    "password", "passwd", "shadow", "root:", "admin", "login", "username",
+    "secret", "credential", "token", "api_key", "apikey", "private key",
+    // crypto / keys / certs
+    "-----begin", "ssh-rsa", "ssh-dss", "certificate", "pgp",
+    // boot / config
+    "bootargs", "bootcmd", "nvram", "/etc/", "mtdparts", "squashfs",
+    // network
+    "http://", "https://", "ftp://", "telnet", "dropbear", "ssid", "wpa",
+];
+
+/// True if `s` contains any important keyword (case-insensitive).
+pub fn is_important(s: &str) -> bool {
+    let lower = s.to_ascii_lowercase();
+    IMPORTANT_KEYWORDS.iter().any(|kw| lower.contains(kw))
+}
+
+/// Tag each extracted string with whether it matched the important-keyword list
+/// and float those to the top. The sort is stable, so within both the important
+/// and the ordinary group the original (offset) ordering is preserved.
+pub fn prioritize_strings(found: Vec<(String, u64)>) -> Vec<(String, u64, bool)> {
+    let mut tagged: Vec<(String, u64, bool)> = found
+        .into_iter()
+        .map(|(s, off)| {
+            let important = is_important(&s);
+            (s, off, important)
+        })
+        .collect();
+    tagged.sort_by(|a, b| b.2.cmp(&a.2));
+    tagged
+}
+
 pub fn extract_strings(firmware: &[u8]) -> Result<Vec<(String, u64)>, Box<dyn std::error::Error>> {
     let config = BytesConfig::new(firmware.to_vec()).with_min_length(4);
     Ok(strings(&config)?)
