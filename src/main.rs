@@ -1,8 +1,5 @@
-mod type_identify;
-mod verify;
-
-use crate::type_identify::{Finding, identify};
 use anyhow::{Context, Result, bail};
+use binwalk::Binwalk;
 use std::{env, fs};
 
 fn main() -> Result<()> {
@@ -13,20 +10,23 @@ fn main() -> Result<()> {
 
     let firmware = fs::read(filepath).with_context(|| format!("reading {filepath}"))?;
 
-    let identified = scan_image(&firmware);
+    let binwalker = Binwalk::new();
+    let findings = binwalker.scan(&firmware);
+
+    if findings.is_empty() {
+        println!("No known signatures found.");
+        return Ok(());
+    }
+
+    for finding in &findings {
+        // size is 0 when the signature parser can't determine a length
+        let size = if finding.size > 0 {
+            format!(" ({} bytes)", finding.size)
+        } else {
+            String::new()
+        };
+        println!("0x{:08X}  {}{}", finding.offset, finding.description, size);
+    }
 
     Ok(())
-}
-
-fn scan_image(image: &[u8]) -> Vec<Finding> {
-    let mut detections: Vec<Finding> = Vec::new();
-    for (offset, _byte) in image.iter().enumerate() {
-        if let Some(filetype) = identify(image, offset) {
-            if !filetype.verify_file(&image[offset..]) {
-                continue;
-            }
-            detections.push(Finding { filetype, offset });
-        }
-    }
-    detections
 }

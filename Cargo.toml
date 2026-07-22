@@ -5,3 +5,4 @@ edition = "2024"
 
 [dependencies]
 anyhow = "1.0.103"
+binwalk = "3.1.0"
