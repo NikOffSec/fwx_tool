@@ -1,5 +1,7 @@
+mod disassemble;
 mod extract;
 mod metadata;
+
 use anyhow::{Context, Result, bail};
 use std::{env, fs};
 
@@ -74,6 +76,12 @@ fn main() -> Result<()> {
         println!("average entropy: {avg:.4} bits");
     }
     println!();
+
+    println!("== Disassembler == ");
+    let listing = disassemble::disassembler(&firmware);
+    for instruction in listing {
+        println!("{:?}", instruction);
+    }
 
     Ok(())
 }

@@ -1,6 +1,14 @@
 use capstone::prelude::*;
-use object::{Architecture, Endianness, Object};
+use object::{Architecture, Endianness, Object, ObjectSection};
 use std::io;
+
+fn text_section(firmware: &[u8]) -> Option<(Vec<u8>, u64)> {
+    let file = object::File::parse(firmware).ok()?;
+    let text = file.section_by_name(".text")?;
+    let bytes = text.data().ok()?.to_vec();
+    let addr = text.address();
+    Some((bytes, addr))
+}
 
 fn detect_arch(firmware: &[u8]) -> Option<(Architecture, Endianness)> {
     let file = object::File::parse(firmware).ok()?;
@@ -31,9 +39,9 @@ fn build_capstone(archv: Architecture, endian: Endianness) -> Result<Capstone, &
             .arm()
             .mode(arch::arm::ArchMode::Arm)
             .endian(if big {
-                arch::Endian::Big
+                capstone::Endian::Big
             } else {
-                arch::Endian::Little
+                capstone::Endian::Little
             })
             .detail(true)
             .build(),
@@ -42,9 +50,9 @@ fn build_capstone(archv: Architecture, endian: Endianness) -> Result<Capstone, &
             .mips()
             .mode(arch::mips::ArchMode::Mips64)
             .endian(if big {
-                arch::Endian::Big
+                capstone::Endian::Big
             } else {
-                arch::Endian::Little
+                capstone::Endian::Little
             })
             .detail(true)
             .build(),
@@ -52,9 +60,9 @@ fn build_capstone(archv: Architecture, endian: Endianness) -> Result<Capstone, &
             .mips()
             .mode(arch::mips::ArchMode::Mips32)
             .endian(if big {
-                arch::Endian::Big
+                capstone::Endian::Big
             } else {
-                arch::Endian::Little
+                capstone::Endian::Little
             })
             .detail(true)
             .build(),
@@ -81,7 +89,13 @@ fn build_capstone(archv: Architecture, endian: Endianness) -> Result<Capstone, &
     cs.map_err(|_| "failed to initialize capstone")
 }
 
-pub fn disassembler(firmware: &[u8], base_addr: u64) -> Vec<(u64, String, String, String)> {
+pub fn disassembler(firmware: &[u8]) -> Vec<(u64, String, String, String)> {
+    // base bytes not used for now, kept for modularity
+    let Some((base_bytes, base_addr)) = text_section(firmware) else {
+        println!("Could not find base_address");
+        return Vec::new();
+    };
+
     let (archv, end) = match detect_arch(firmware) {
         Some(pair) => pair,
         None => {
@@ -101,7 +115,7 @@ pub fn disassembler(firmware: &[u8], base_addr: u64) -> Vec<(u64, String, String
         }
     };
 
-    let insns = match cs.disasm_all(firmware, base_addr) {
+    let insns = match cs.disasm_all(&base_bytes, base_addr) {
         Ok(insns) => insns,
         Err(_) => return Vec::new(),
     };
